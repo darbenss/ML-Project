@@ -1,25 +1,49 @@
 import pandas as pd
 import numpy as np
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler, OrdinalEncoder, OneHotEncoder, FunctionTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, OrdinalEncoder, FunctionTransformer
-from sklearn.impute import SimpleImputer
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.feature_selection import SelectFromModel
+from imblearn.pipeline import Pipeline as ImbPipeline
+from imblearn.over_sampling import SMOTE
 
-# --- 1. Define Column Groups ---
-# Based on your dataset analysis
-ordinal_cols = ['parental_education_level', 'diet_quality', 'internet_quality']
-nominal_cols = ['gender', 'part_time_job', 'extracurricular_participation']
+# --- GLOBAL CONFIGURATION (Must match training exactly) ---
 
-# Define mappings for Ordinal Encoder (Important to keep order)
-# Adjust these lists based on your specific logical order
-edu_order = ['High School', 'Bachelor', 'Master', 'PhD']
-diet_order = ['Poor', 'Fair', 'Good']
-net_order = ['Poor', 'Average', 'Good']
+# 1. Define Categories for Ordinal Encoding
+part_time_job_order = ["No", "Yes"]
+diet_quality_order = ["Poor", "Fair", "Good"]
+parental_education_level_order = ["High School", "Bachelor", "Master", "PhD"] # Added PhD to match app input
+internet_quality_order = ["Poor", "Average", "Good"]
+extracurricular_participation_order = ["No", "Yes"]
 
-# --- 2. Custom Functions ---
+ordinal_categories_list = [
+    part_time_job_order,
+    diet_quality_order,
+    parental_education_level_order,
+    internet_quality_order,
+    extracurricular_participation_order
+]
+
+# 2. Define Column Groups
+ordinal_cols = [
+    'part_time_job',
+    'diet_quality',
+    'parental_education_level',
+    'internet_quality',
+    'extracurricular_participation'
+]
+
+nominal_cols = ['gender']
+
+# --- CUSTOM FUNCTIONS ---
+
 def feature_engineering(df):
     """
-    Recreates the feature engineering steps from the training notebook.
+    Custom feature engineering function.
+    Must be available when loading the pipeline.
     """
     df = df.copy()
 
@@ -28,9 +52,10 @@ def feature_engineering(df):
         df['sleep_deviation'] = df['sleep_hours'] - 8
 
     # --- Sleep Features ---
-    df['is_severely_sleep_deprived'] = df['sleep_deviation'].apply(lambda x: 1 if x < -3.0 else 0)
-    df['is_sleep_deficient'] = df['sleep_deviation'].apply(lambda x: 1 if x < -2.0 else 0)
-    df['is_overslept'] = df['sleep_deviation'].apply(lambda x: 1 if x > 2.0 else 0)
+    if 'sleep_deviation' in df.columns:
+        df['is_severely_sleep_deprived'] = df['sleep_deviation'].apply(lambda x: 1 if x < -3.0 else 0)
+        df['is_sleep_deficient'] = df['sleep_deviation'].apply(lambda x: 1 if x < -2.0 else 0)
+        df['is_overslept'] = df['sleep_deviation'].apply(lambda x: 1 if x > 2.0 else 0)
 
     if 'social_media_hours' in df.columns and 'netflix_hours' in df.columns:
         df['total_distraction_hours'] = df['social_media_hours'] + df['netflix_hours']
@@ -49,37 +74,14 @@ def feature_engineering(df):
 
 def select_numeric_cols(df):
     """
-    Selects numeric columns excluding those already handled by ordinal/nominal transformers.
+    Selects all numeric columns from the dataframe,
+    excluding those in ordinal_cols and nominal_cols.
     """
+    # Get all numeric columns
     numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+
+    # Define what to exclude (using the globals defined above)
     exclude_cols = ordinal_cols + nominal_cols
+
+    # Return the difference
     return [c for c in numeric_cols if c not in exclude_cols]
-
-# --- 3. Transformers ---
-numeric_transformer = Pipeline(steps=[
-    ('imputer', SimpleImputer(strategy='median')),
-    ('scaler', StandardScaler())
-])
-
-ordinal_transformer = Pipeline(steps=[
-    ('imputer', SimpleImputer(strategy='most_frequent')),
-    ('ordinal', OrdinalEncoder(categories=[edu_order, diet_order, net_order], handle_unknown='use_encoded_value', unknown_value=-1))
-])
-
-nominal_transformer = Pipeline(steps=[
-    ('imputer', SimpleImputer(strategy='most_frequent')),
-    ('onehot', OneHotEncoder(handle_unknown='ignore'))
-])
-
-# Combine into Preprocessor
-preprocessor = ColumnTransformer(
-    transformers=[
-        ('num', numeric_transformer, select_numeric_cols),
-        ('ord', ordinal_transformer, ordinal_cols),
-        ('nom', nominal_transformer, nominal_cols)
-    ],
-    remainder='drop'
-)
-
-# Feature Engineering Transformer
-feature_eng_transformer = FunctionTransformer(feature_engineering, validate=False)

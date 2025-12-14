@@ -1,13 +1,13 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import joblib
+import numpy as np
 import plotly.graph_objects as go
+from imblearn.pipeline import Pipeline
 
 # --- 1. CONFIGURATION & IMPORTS ---
 # Import custom modules for model compatibility
 # We assume preprocessing.py is in the same directory
-import preprocessing
 from preprocessing import feature_engineering, select_numeric_cols
 
 # Monkey patch for joblib to find functions if they were saved in __main__
@@ -122,9 +122,10 @@ model_loaded = False
 
 try:
     pipeline = joblib.load(model_path)
-    prediction_idx = pipeline.predict(input_df)[0]
+    raw_prediction = pipeline.predict(input_df)[0]
     probs = pipeline.predict_proba(input_df)[0]
     model_loaded = True
+    prediction_idx = int(raw_prediction)
 except Exception as e:
     st.error(f"Model could not be loaded. Running in Demo Mode. ({e})")
     # Mock data for demonstration if file is missing
